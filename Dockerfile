@@ -6,8 +6,6 @@ LABEL org.label-schema.vcs-url="https://github.com/giovtorres/docker-centos7-slu
       org.label-schema.name="docker-centos7-slurm" \
       org.label-schema.description="Slurm All-in-one Docker container on CentOS 7"
 
-ENV SLURM_GIT_REPOSITORY https://github.com/SchedMD/slurm.git
-
 RUN yum makecache fast \
     && yum -y install epel-release \
     && yum -y install \
@@ -38,10 +36,10 @@ RUN pip install Cython nose \
 
 RUN groupadd -r slurm && useradd -r -g slurm slurm
 
+ADD slurm /usr/local/src/slurm
+
 RUN set -x \
-    && cd /usr/local/src \
-    && git clone "$SLURM_GIT_REPOSITORY" slurm \
-    && cd slurm \
+    && cd /usr/local/src/slurm \
     && ./configure --enable-debug --enable-front-end --prefix=/usr \
        --sysconfdir=/etc/slurm --with-mysql_config=/usr/bin \
        --libdir=/usr/lib64 \
