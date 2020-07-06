@@ -1,42 +1,66 @@
-FROM centos:7
-MAINTAINER Giovanni Torres
+FROM centos:7.7.1908
 
-LABEL org.label-schema.vcs-url="https://github.com/giovtorres/docker-centos7-slurm" \
+LABEL org.opencontainers.image.source="https://github.com/giovtorres/docker-centos7-slurm" \
+      org.opencontainers.image.title="docker-centos7-slurm" \
+      org.opencontainers.image.description="Slurm All-in-one Docker container on CentOS 7" \
       org.label-schema.docker.cmd="docker run -it -h ernie giovtorres/docker-centos7-slurm:latest" \
-      org.label-schema.name="docker-centos7-slurm" \
-      org.label-schema.description="Slurm All-in-one Docker container on CentOS 7"
+      maintainer="Giovanni Torres"
 
-RUN yum makecache fast \
+ENV PATH "/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin"
+
+# Install common YUM dependency packages
+RUN set -ex \
+    && yum makecache fast \
+    && yum -y update \
     && yum -y install epel-release \
     && yum -y install \
-        wget \
+        autoconf \
+        bash-completion \
         bzip2 \
-        perl \
+        bzip2-devel \
+        file \
+        iproute \
         gcc \
-        gcc-c++\
-        vim-enhanced \
+        gcc-c++ \
+        gdbm-devel \
         git \
+        glibc-devel \
+        gmp-devel \
+        libffi-devel \
+        libGL-devel \
+        libX11-devel \
         make \
-        munge \
-        munge-devel \
-        supervisor \
-        python-devel \
-        python-pip \
-        python34 \
-        python34-devel \
-        python34-pip \
         mariadb-server \
         mariadb-devel \
+        munge \
+        munge-devel \
+        ncurses-devel \
+        openssl-devel \
+        openssl-libs \
+        perl \
+        pkconfig \
         psmisc \
-        bash-completion \
-    && yum clean all
+        readline-devel \
+        sqlite-devel \
+        tcl-devel \
+        tix-devel \
+        tk \
+        tk-devel \
+        supervisor \
+        wget \
+        vim-enhanced \
+        xz-devel \
+        zlib-devel \
+    && yum clean all \
+    && rm -rf /var/cache/yum
 
-RUN pip install Cython nose \
-    && pip3 install Cython nose
+COPY files/install-python.sh /tmp
 
-RUN groupadd -r slurm && useradd -r -g slurm slurm
-
-ADD slurm /usr/local/src/slurm
+# Install Python versions
+ARG PYTHON_VERSIONS="2.7 3.5 3.6 3.7 3.8"
+RUN set -ex \
+    && for version in ${PYTHON_VERSIONS}; do /tmp/install-python.sh "$version"; done \
+    && rm -f /tmp/install-python.sh
 
 RUN set -x \
     && cd /usr/local/src/slurm \
@@ -46,25 +70,51 @@ RUN set -x \
     && make install \
     && install -D -m644 etc/cgroup.conf.example /etc/slurm/cgroup.conf.example \
     && install -D -m644 etc/slurm.conf.example /etc/slurm/slurm.conf.example \
-    && install -D -m644 etc/slurm.epilog.clean /etc/slurm/slurm.epilog.clean \
     && install -D -m644 etc/slurmdbd.conf.example /etc/slurm/slurmdbd.conf.example \
     && install -D -m644 contribs/slurm_completion_help/slurm_completion.sh /etc/profile.d/slurm_completion.sh \
-    && cd \
-    && rm -rf /usr/local/src/slurm \
+    && popd \
+    && rm -rf slurm \
+    && groupadd -r slurm  \
+    && useradd -r -g slurm slurm \
     && mkdir /etc/sysconfig/slurm \
         /var/spool/slurmd \
         /var/run/slurmd \
         /var/lib/slurmd \
         /var/log/slurm \
+    && chown slurm:root /var/spool/slurmd \
+        /var/run/slurmd \
+        /var/lib/slurmd \
+        /var/log/slurm \
     && /sbin/create-munge-key
 
-COPY slurm.conf /etc/slurm/slurm.conf
-COPY slurmdbd.conf /etc/slurm/slurmdbd.conf
-COPY supervisord.conf /etc/
+# Set Vim and Git defaults
+RUN set -ex \
+    && echo "syntax on"           >> $HOME/.vimrc \
+    && echo "set tabstop=4"       >> $HOME/.vimrc \
+    && echo "set softtabstop=4"   >> $HOME/.vimrc \
+    && echo "set shiftwidth=4"    >> $HOME/.vimrc \
+    && echo "set expandtab"       >> $HOME/.vimrc \
+    && echo "set autoindent"      >> $HOME/.vimrc \
+    && echo "set fileformat=unix" >> $HOME/.vimrc \
+    && echo "set encoding=utf-8"  >> $HOME/.vimrc \
+    && git config --global color.ui auto \
+    && git config --global push.default simple
 
+# Copy Slurm configuration files into the container
+COPY files/slurm/slurm.conf /etc/slurm/slurm.conf
+COPY files/slurm/gres.conf /etc/slurm/gres.conf
+COPY files/slurm/slurmdbd.conf /etc/slurm/slurmdbd.conf
+COPY files/supervisord.conf /etc/
+
+# Mark externally mounted volumes
 VOLUME ["/var/lib/mysql", "/var/lib/slurmd", "/var/spool/slurmd", "/var/log/slurm"]
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# Add Tini
+ARG TINI_VERSION=v0.18.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /sbin/tini
+RUN chmod +x /sbin/tini
+
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/bin/bash"]

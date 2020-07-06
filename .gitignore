@@ -1,2 +1,5 @@
-# Ignore docker volumes directories
+.pytest_cache
+.vscode
+__pycache__
+venv
 volumes
